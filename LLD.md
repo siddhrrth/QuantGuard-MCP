@@ -1,443 +1,474 @@
-# Low-Level Design (LLD) — QuantGuard MCP
+# QuantGuard MCP — Low-Level Design (LLD)
 
-This Low-Level Design (LLD) document defines the architecture, components, data flow, API contracts, database schema, decision logic, and agent configurations for **QuantGuard MCP**, a microstructure-analytics and risk-aware execution platform built on the **NitroStack** framework.
+This document specifies the technical design, module architecture, database schemas, and decision logic for **QuantGuard MCP**, a multi-agent trading safety and execution risk platform.
 
 ---
 
 ## 1. System Architecture
 
-The following diagram illustrates the flow from the client-facing UI (Trading Terminal/NitroStudio) down to the data providers and database storage:
-
 ```mermaid
 graph TD
-    subgraph Client Layer [Client Layer]
-        Terminal["Trading Terminal (NitroStudio Dashboard)"]
-        Widgets["6 Dashboard Panels (Vite / Next.js)"]
+    Terminal[Trading Terminal / UI] -->|Exposes Widgets| Client[MCP Client / NitroStudio]
+    Client -->|JSON-RPC Protocol| Server[QuantGuard MCP Server]
+
+    subgraph Server Modules
+        Server -->|Orchestrates| AgentsModule[Agents Module]
+        
+        AgentsModule --> StrategyAgent[Strategy Agent]
+        AgentsModule --> RiskAgent[Risk Agent]
+        AgentsModule --> LiquidityAgent[Liquidity Agent]
+        AgentsModule --> ToxicityAgent[Toxicity Agent]
+        AgentsModule --> SpoofingAgent[Spoofing Agent]
+        AgentsModule --> VolatilityAgent[Volatility Agent]
+        AgentsModule --> NewsAgent[News Agent]
+        
+        StrategyAgent -->|Uses| StrategyModule[Strategy Module]
+        
+        SharedRes[Shared Resources]
+        SharedRes --> MarketRes[Market Resource]
+        SharedRes --> OBRes[OrderBook Resource]
+        SharedRes --> RiskRes[Risk Resource]
+        SharedRes --> NewsRes[News Resource]
     end
 
-    subgraph Interface Layer [MCP Interface]
-        Client["MCP Client"]
-        Server["QuantGuard MCP Server"]
+    subgraph Data Layer
+        SharedRes --> SQLite[(SQLite DB)]
+        MarketRes -->|HTTP / WS| Binance[Binance WebSocket / Yahoo Finance]
     end
-
-    subgraph Orchestration Layer [Orchestration Layer]
-        MemoOrch["generate_trading_memo Orchestrator"]
-        subgraph Agents [7 Specialized Agents]
-            StratAgent["Strategy Agent"]
-            RiskAgent["Risk Agent"]
-            LiqAgent["Liquidity Agent"]
-            ToxAgent["Toxicity Agent"]
-            SpoofAgent["Spoofing Agent"]
-            NewsAgent["News Agent"]
-            VolAgent["Volatility Agent"]
-        end
-    end
-
-    subgraph Service Layer [Service Layer]
-        DbSvc["DbService"]
-        ConfigSvc["ConfigService"]
-        MarketSvc["MarketDataService"]
-        BinanceWS["BinanceWSPlusDemoService"]
-    end
-
-    subgraph Data Sources [Data Layer]
-        Yahoo["Yahoo Finance Provider (Free)"]
-        BinanceFeed["Binance Live WebSocket Feed"]
-        SQLite["SQLite Database (quantguard.db)"]
-    end
-
-    Terminal -->|Visualizes| Widgets
-    Widgets -->|JSON-RPC calls| Client
-    Client -->|MCP Protocol| Server
-    Server -->|Registers Tools / Resources| MemoOrch
-
-    MemoOrch -->|Invokes in Parallel| Agents
-    Agents -->|Evaluates metrics| ServiceLayer
-
-    MarketSvc -->|Injects Provider| Yahoo
-    MarketSvc -->|Reads Live book| BinanceWS
-    BinanceWS -->|Subscribes| BinanceFeed
-    DbSvc -->|Executes Schema/SQL| SQLite
 ```
 
 ---
 
-## 2. Module DI Components
+## 2. Module & Dependency Injection (DI) Diagram
 
-Every module in the codebase is a NitroStack `@Module` using NestJS-style Dependency Injection. The DI hierarchy and dependencies are structured as follows:
+Every block below represents a NitroStack module (`@Module`), showing the injected services and modules.
 
 ```mermaid
 graph TD
-    AppModule["AppModule"]
-    DbModule["DbModule"]
-    ConfigModule["ConfigModule"]
-    MarketModule["MarketModule"]
-    OrderbookModule["OrderbookModule"]
-    RiskModule["RiskModule"]
-    NewsModule["NewsModule"]
-    AgentsModule["AgentsModule"]
-    StrategyModule["StrategyModule"]
-    HealthModule["HealthModule"]
+    classDef module fill:#1f2937,stroke:#3b82f6,stroke-width:2px,color:#fff;
+    classDef service fill:#10b981,stroke:#047857,stroke-width:1px,color:#fff;
 
-    AppModule -->|Imports| DbModule
-    AppModule -->|Imports| ConfigModule
-    AppModule -->|Imports| MarketModule
-    AppModule -->|Imports| OrderbookModule
-    AppModule -->|Imports| RiskModule
-    AppModule -->|Imports| NewsModule
-    AppModule -->|Imports| AgentsModule
-    AppModule -->|Imports| StrategyModule
-    AppModule -->|Imports| HealthModule
+    subgraph DbModule
+        DB_Mod[DbModule]:::module
+        DB_Svc[DbService]:::service
+        DB_Mod -.-> DB_Svc
+    end
 
-    DbService["DbService"]
-    DbModule -->|Provides / Exports| DbService
+    subgraph MarketModule
+        Mkt_Mod[MarketModule]:::module
+        YF_Prov[YahooFinanceProvider]:::service
+        Mkt_Svc[MarketDataService]:::service
+        Mkt_Res[MarketResource]:::service
+        Mkt_Mod -.-> YF_Prov
+        Mkt_Mod -.-> Mkt_Svc
+        Mkt_Mod -.-> Mkt_Res
+    end
 
-    ConfigService["ConfigService"]
-    ConfigModule -->|Provides / Exports| ConfigService
+    subgraph OrderbookModule
+        OB_Mod[OrderbookModule]:::module
+        OB_Res[OrderBookResource]:::service
+        OB_Mod -.-> OB_Res
+    end
 
-    YahooFinance["YahooFinanceProvider"]
-    MarketSvc["MarketDataService"]
-    MarketModule -->|Provides| YahooFinance
-    MarketModule -->|Provides / Exports| MarketSvc
-    MarketSvc -->|Depends On| YahooFinance
-    MarketSvc -->|Depends On| ConfigService
+    subgraph RiskModule
+        Risk_Mod[RiskModule]:::module
+        Risk_Res[RiskResource]:::service
+        Risk_Svc[RiskService]:::service
+        Risk_Mod -.-> Risk_Res
+        Risk_Mod -.-> Risk_Svc
+    end
 
-    OrderbookSvc["OrderbookService"]
-    OrderbookModule -->|Provides / Exports| OrderbookSvc
-    OrderbookSvc -->|Depends On| DbService
-    OrderbookSvc -->|Depends On| MarketSvc
+    subgraph NewsModule
+        News_Mod[NewsModule]:::module
+        News_Res[NewsResource]:::service
+        News_Svc[NewsService]:::service
+        News_Mod -.-> News_Res
+        News_Mod -.-> News_Svc
+    end
 
-    RiskSvc["RiskService"]
-    RiskModule -->|Provides / Exports| RiskSvc
-    RiskSvc -->|Depends On| DbService
-    RiskSvc -->|Depends On| MarketSvc
+    subgraph StrategyModule
+        Strat_Mod[StrategyModule]:::module
+        Strat_Svc[StrategyService]:::service
+        Strat_Mod -.-> Strat_Svc
+    end
 
-    NewsSvc["NewsService"]
-    NewsModule -->|Provides / Exports| NewsSvc
-    NewsSvc -->|Depends On| DbService
-    NewsSvc -->|Depends On| ConfigService
+    subgraph AgentsModule
+        Agt_Mod[AgentsModule]:::module
+        Orch_Svc[OrchestratorService]:::service
+        Agt_Mod -.-> Orch_Svc
+    end
 
-    OrchSvc["OrchestrationService"]
-    AgentsModule -->|Provides / Exports| OrchSvc
-    OrchSvc -->|Depends On| MarketSvc
-    OrchSvc -->|Depends On| OrderbookSvc
-    OrchSvc -->|Depends On| RiskSvc
-    OrchSvc -->|Depends On| NewsSvc
-
-    StrategySvc["StrategyService"]
-    StrategyModule -->|Provides / Exports| StrategySvc
-    StrategySvc -->|Depends On| DbService
-    StrategySvc -->|Depends On| MarketSvc
+    %% Dependency Imports
+    Mkt_Mod --> DB_Mod
+    OB_Mod --> Mkt_Mod
+    OB_Mod --> DB_Mod
+    Risk_Mod --> DB_Mod
+    News_Mod --> DB_Mod
+    Strategy_Mod[StrategyModule] --> Mkt_Mod
+    Strategy_Mod --> OB_Mod
+    Strategy_Mod --> Risk_Mod
+    Agt_Mod --> Strategy_Mod
+    Agt_Mod --> News_Mod
+    
+    %% DI Constructor Injections
+    Mkt_Svc -->|injects| YF_Prov
+    Mkt_Res -->|injects| Mkt_Svc
+    OB_Res -->|injects| Mkt_Svc
+    OB_Res -->|injects| DB_Svc
+    Risk_Res -->|injects| Risk_Svc
+    Risk_Svc -->|injects| DB_Svc
+    News_Res -->|injects| News_Svc
+    News_Svc -->|injects| DB_Svc
+    Strat_Svc -->|injects| Mkt_Svc
+    Strat_Svc -->|injects| Risk_Svc
+    Orch_Svc -->|injects| Mkt_Res
+    Orch_Svc -->|injects| OB_Res
+    Orch_Svc -->|injects| Risk_Res
+    Orch_Svc -->|injects| News_Res
+    Orch_Svc -->|injects| Strat_Svc
+    Orch_Svc -->|injects| DB_Svc
 ```
 
 ---
 
-## 3. Data Flow Scenario: "Is this market safe to trade?"
+## 3. Data Flow / Sequence Diagram
 
-When a client queries the system's safety and execution strategy recommendations, the orchestrator coordinates metrics collection, parallel analytics, deterministic rules calculation, and agent explanations:
+The sequence diagram below shows the flow when a client requests trading safety validation.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Terminal as Trading Dashboard
-    participant Server as MCP Server / Orchestrator
-    participant Res as Shared Resources (Market / Book)
-    participant Tools as Analytics Tools (Toxicity, Spoofing, Risk)
-    participant Strat as StrategyAgent / Rule Engine
-    participant LLM as Claude (LLM)
-    participant Db as SQLite Database
+    actor Client as MCP Client / Terminal
+    participant Orch as OrchestratorService
+    participant MktRes as MarketResource
+    participant OBRes as OrderBookResource
+    participant Tools as Core Analytics Tools
+    participant NewsRes as NewsResource
+    participant StratAgent as StrategyAgent
+    participant LLM as LLM Orchestration
+    participant DB as SQLite DB
 
-    Terminal->>Server: Call generate_trading_memo(ticker, account)
+    Client->>Orch: ToolCall: generate_trading_memo(ticker)
+    activate Orch
     
-    Server->>Res: Fetch MarketResource & OrderBookResource
-    Res-->>Server: Return Price, Spread, Depth, Imbalance
-    
-    Note over Server, Tools: Execute calculations in parallel
-    par Toxicity Check
-        Server->>Tools: analyze_order_flow_toxicity(ticker)
-        Tools-->>Server: Return VPIN (e.g., 0.82)
+    Note over Orch: Step 1: Fetch Shared Resources
+    Orch->>MktRes: getMarketData(ticker)
+    MktRes-->>Orch: MarketResource JSON
+    Orch->>OBRes: getOrderbook(ticker)
+    OBRes-->>Orch: OrderBookResource JSON
+
+    Note over Orch: Step 2: Parallel Analytics Execution
+    par Volatility & Liquidity
+        Orch->>Tools: scan_market(ticker)
+        Tools-->>Orch: spread, volatility, depth metrics
+    and Flow Toxicity
+        Orch->>Tools: analyze_order_flow_toxicity(ticker)
+        Tools-->>Orch: VPIN metric
     and Spoofing Detection
-        Server->>Tools: detect_spoofing(ticker)
-        Tools-->>Server: Return spoofingDetected (e.g., true)
-    and Liquidity Analysis
-        Server->>Tools: analyze_liquidity(ticker)
-        Tools-->>Server: Return score (e.g., 28) & slippage
-    and Risk Assessment
-        Server->>Tools: analyze_risk(account)
-        Tools-->>Server: Return exposure, VaR95, drawdown
+        Orch->>Tools: detect_spoofing(ticker)
+        Tools-->>Orch: Spoofing triggers (buy/sell wall pressure)
+    and Risk Limits
+        Orch->>Tools: analyze_risk(account)
+        Tools-->>Orch: VaR95, drawdown, exposure
     end
-    
-    Server->>Res: Fetch NewsResource (Headlines + Sentiment Score)
-    Res-->>Server: Return sentiment score (e.g., -0.2) + articles
-    
-    Server->>Strat: Invoke StrategyAgent with all collected state
-    Strat->>Tools: Run optimize_execution(rules-based decision engine)
-    Note over Tools: Evaluates deterministic decision table
-    Tools-->>Strat: Return recommendedStrategy (e.g., "WAIT"), ruleIds
-    
-    Strat->>LLM: Pass rule-based recommendation + metrics for plain-English explanation
-    LLM-->>Strat: Return professional trader rationale text
-    
-    Strat-->>Server: Return Structured Memo
-    Server->>Db: Persist signals & memo logs
-    Server-->>Terminal: Return final structured JSON memo
-    Note over Terminal: Recommendation Panel renders memo & triggers UI updates
+
+    Note over Orch: Step 3: Sentiment Check
+    Orch->>NewsRes: getNews(ticker)
+    NewsRes-->>Orch: Sentiment score, breaking news
+
+    Note over Orch: Step 4: Rule-Based Strategy Execution
+    Orch->>Tools: optimize_execution(toxicity, liquidity, volatility, spoofing)
+    Tools-->>Orch: Strategy = WAIT/TWAP/VWAP/ICEBERG/MARKET
+
+    Note over Orch: Step 5: Plain English Generation
+    Orch->>StratAgent: Prompt: strategy_prompt(inputs, recommended_strategy)
+    StratAgent->>LLM: Generate natural language explanation
+    LLM-->>StratAgent: "Explanation text..."
+    StratAgent-->>Orch: Explained Strategy
+
+    Note over Orch: Step 6: Persist Signal
+    Orch->>DB: INSERT INTO signals / memos
+    DB-->>Orch: Persisted
+
+    Orch-->>Client: structured memo { ticker, timestamp, liquidity, toxicity, spoofing, volatility, risk, news, recommendation, confidence, reasoning }
+    deactivate Orch
 ```
 
 ---
 
-## 4. Tool & Resource Contracts
+## 4. Tool & Resource Contract Table
 
-### Shared Resources
-Resources provide low-level data structures mapped to URI templates.
-
-| Resource URI | Description | Input Schema | Output Schema |
-|--------------|-------------|--------------|---------------|
-| `market://{ticker}` | Real-time market metrics, spread, and candles. | `{ ticker: string }` | `MarketResourceSchema` |
-| `orderbook://{ticker}` | Bid/ask levels, total depth, and order imbalance. | `{ ticker: string }` | `OrderBookResourceSchema` |
-| `risk://{account}` | Portfolio exposure, VaR, Sharpe, and drawdown. | `{ account: string }` | `RiskResourceSchema` |
-| `news://{ticker}` | Economic events, breaking news, and sentiment index. | `{ ticker: string }` | `NewsResourceSchema` |
-
-### Core Analytics and Execution Tools
-Tools perform actions and execute logic triggered by client requests or agent loops.
-
-| Tool Name | Description | Input Schema (Zod) | Output Schema (Zod) |
-|-----------|-------------|--------------------|---------------------|
-| `scan_market` | Fetches base price, spread, volatility, and general health. | `ticker: string` | `price: number, spread: number, volatility: number, liquidityScore: number` |
-| `analyze_order_flow_toxicity` | Computes VPIN (Volume-Synchronized Probability of Toxicity). | `ticker: string, buckets?: number` | `vpin: number, toxicityLevel: 'Low'\|'Medium'\|'High'` |
-| `detect_spoofing` | Scans for large resting orders that appear and disappear. | `ticker: string, threshold?: number` | `spoofingDetected: boolean, signals: Array<{ price: number, side: string, size: number }>` |
-| `analyze_liquidity` | Evaluates book depth and estimates slippage. | `ticker: string, orderSize: number` | `liquidityScore: number, estimatedSlippageBps: number` |
-| `optimize_execution` | Deterministic decision table evaluator. **Rule-based only.** | `ticker: string, liquidityScore: number, toxicityScore: number, spoofingDetected: boolean, riskLevel: string` | `recommendedStrategy: 'WAIT'\|'TWAP'\|'VWAP'\|'ICEBERG'\|'MARKET', ruleDescription: string` |
-| `analyze_risk` | Portfolio calculations: VaR95/99 and Expected Shortfall. | `account: string` | `var95: number, expectedShortfall: number, suggestedMaxPositionSize: number` |
-| `backtest_strategy` | Simulates TWAP, VWAP, or Market orders on historical candles. | `ticker: string, strategy: 'TWAP'\|'VWAP'\|'MARKET', days?: number` | `sharpe: number, totalReturn: number, maxDrawdown: number, winRate: number` |
-| `generate_trading_memo` | High-level orchestrator query summarizing market safety. | `ticker: string, account: string` | Full nested JSON schema containing ticker, timestamp, recommendations, confidence, and reasoning. |
+| Primitive Type | URI / Tool Name | Input Schema (Zod) | Output Schema (Zod) |
+| :--- | :--- | :--- | :--- |
+| **Resource** | `market://{ticker}` | N/A (URI param: `ticker`) | `MarketResourceSchema`: currentPrice, ohlc, vwap, spread, volume, marketDepth, timestamp |
+| **Resource** | `orderbook://{ticker}` | N/A (URI param: `ticker`) | `OrderBookResourceSchema`: bidLevels[], askLevels[], marketDepth, orderImbalance, liquidityScore, timestamp |
+| **Resource** | `risk://{account}` | N/A (URI param: `account`) | `RiskResourceSchema`: currentExposure, pnl, var95, var99, expectedShortfall, maxDrawdown, leverage, suggestedMaxPositionSize, timestamp |
+| **Resource** | `news://{ticker}` | N/A (URI param: `ticker`) | `NewsResourceSchema`: economicCalendar[], breakingNews[], sentimentScore, sentimentBreakdown, timestamp |
+| **Tool** | `scan_market` | `ticker: string` | `price: number, spread: number, volatility: number, liquidityScore: number, timestamp: number` |
+| **Tool** | `analyze_order_flow_toxicity` | `ticker: string, bucketSize?: number` | `vpin: number, toxicityStatus: 'LOW'\|'MEDIUM'\|'HIGH', timestamp: number` |
+| **Tool** | `detect_spoofing` | `ticker: string` | `spoofingDetected: boolean, direction: 'BUY'\|'SELL'\|'NONE', spoofingDetails: string, timestamp: number` |
+| **Tool** | `analyze_liquidity` | `ticker: string, orderSize?: number` | `liquidityScore: number, estimatedSlippagePercent: number, depthSummary: string, timestamp: number` |
+| **Tool** | `optimize_execution` | `vpin: number, spread: number, volatility: number, spoofingDetected: boolean` | `recommendedStrategy: 'WAIT'\|'TWAP'\|'VWAP'\|'ICEBERG'\|'MARKET', confidence: number, reasoning: string` |
+| **Tool** | `analyze_risk` | `account: string, positionTicker: string, proposedSize: number` | `var95: number, expectedShortfall: number, portfolioDrawdown: number, riskApproved: boolean, comments: string` |
+| **Tool** | `backtest_strategy` | `strategy: 'TWAP'\|'VWAP'\|'MARKET', ticker: string, days?: number` | `sharpeRatio: number, totalReturn: number, maxDrawdown: number, winRate: number, tradesCount: number` |
+| **Tool** | `generate_trading_memo` | `ticker: string, account: string` | `ticker: string, timestamp: number, recommendation: string, confidence: number, reasoning: string, metrics: object` |
 
 ---
 
 ## 5. Database Schema (ERD)
 
-The SQLite database (`quantguard.db`) schema and relations:
-
 ```mermaid
 erDiagram
     orders {
-        TEXT id PK
-        TEXT symbol
-        TEXT side
-        REAL quantity
-        REAL price
-        TEXT status
-        DATETIME created_at
-        DATETIME updated_at
-    }
-    trades {
-        TEXT id PK
-        TEXT order_id FK
-        TEXT symbol
-        REAL quantity
-        REAL price
-        DATETIME executed_at
-    }
-    orderbook_snapshots {
-        TEXT id PK
-        TEXT symbol
-        TEXT bids
-        TEXT asks
-        DATETIME timestamp
-    }
-    risk {
-        TEXT id PK
-        TEXT symbol
-        REAL var_95
-        REAL cvar_95
-        REAL sharpe_ratio
-        REAL max_drawdown
-        DATETIME calculated_at
-    }
-    signals {
-        TEXT id PK
-        TEXT symbol
-        TEXT signal_type
-        REAL confidence
-        DATETIME generated_at
-    }
-    strategies {
-        TEXT id PK
-        TEXT name
-        TEXT description
-        TEXT status
-        TEXT parameters
-        DATETIME created_at
-        DATETIME updated_at
-    }
-    news {
-        TEXT id PK
-        TEXT title
-        TEXT content
-        TEXT source
-        TEXT url
-        DATETIME published_at
-        DATETIME fetched_at
-        REAL sentiment
-    }
-    logs {
-        TEXT id PK
-        TEXT level
-        TEXT message
-        TEXT context
-        DATETIME created_at
+        string id PK
+        string symbol
+        string side
+        real quantity
+        real price
+        string status
+        datetime created_at
+        datetime updated_at
     }
 
-    orders ||--o{ trades : "executes into"
-    orders ||--|| strategies : "governed by"
+    trades {
+        string id PK
+        string order_id FK
+        string symbol
+        real quantity
+        real price
+        datetime executed_at
+    }
+
+    orderbook_snapshots {
+        string id PK
+        string symbol
+        text bids
+        text asks
+        datetime timestamp
+    }
+
+    risk {
+        string id PK
+        string symbol
+        real var_95
+        real cvar_95
+        real sharpe_ratio
+        real max_drawdown
+        datetime calculated_at
+    }
+
+    signals {
+        string id PK
+        string symbol
+        string signal_type
+        real confidence
+        datetime generated_at
+    }
+
+    strategies {
+        string id PK
+        string name
+        string description
+        string status
+        text parameters
+        datetime created_at
+        datetime updated_at
+    }
+
+    news {
+        string id PK
+        string title
+        string content
+        string source
+        string url
+        datetime published_at
+        datetime fetched_at
+    }
+
+    logs {
+        string id PK
+        string level
+        string message
+        text context
+        datetime created_at
+    }
+
+    trading_memos {
+        string id PK
+        string ticker
+        datetime timestamp
+        text liquidity_metrics
+        text toxicity_metrics
+        text spoofing_metrics
+        text volatility_metrics
+        text risk_metrics
+        text news_sentiment
+        string recommendation
+        real confidence
+        text reasoning
+    }
+
+    orders ||--o{ trades : "executes"
 ```
 
 ---
 
 ## 6. Decision Logic Table for `optimize_execution`
 
-The execution logic is entirely rule-based and auditable. The LLM **never** overrides these decisions:
+The logic in `optimize_execution` is strictly deterministic. The following table specifies the execution rules:
 
-| Condition # | Spoofing | Toxicity (VPIN) | Liquidity Score | Portfolio VaR Risk | Recommended Strategy | Rationale & Code Trigger |
-|-------------|----------|-----------------|-----------------|--------------------|----------------------|--------------------------|
-| 1 | **TRUE** | Any | Any | Any | **WAIT** | Spoofing detected in the order book. High price manipulation risk. |
-| 2 | Any | **> 0.70 (High)**| Any | Any | **WAIT** | Order flow toxicity is extremely high (VPIN > 0.70). High risk of adverse selection. |
-| 3 | FALSE | <= 0.70 | **< 30 (Low)** | Any | **TWAP** | Market is highly illiquid. Use Time-Weighted Average Price to split size. |
-| 4 | FALSE | <= 0.70 | >= 30 | **High (> Limit)** | **ICEBERG** | Account exposure/VaR exceeds limits. Use Iceberg order to hide block size. |
-| 5 | FALSE | **0.40 - 0.70** | >= 30 | Safe | **VWAP** | Moderate toxicity detected. Participate along volume profile to avoid impact. |
-| 6 | FALSE | < 0.40 | **>= 70 (High)**| Safe | **MARKET** | Liquid and safe conditions. Immediate execution via Market Order. |
-| 7 | Default | Default | Default | Default | **TWAP** | Default fallback for stable execution. |
+| Rule ID | Toxicity (VPIN) | Spread (bps) | Volatility (daily std dev) | Spoofing Detected | Recommended Strategy | Rationale / Rule Description |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **R1** | Any | Any | Any | **True** | `WAIT` | **Spoofing Alert**: Large manipulative orders present. High risk of adverse selection. |
+| **R2** | `> 0.45` | Any | Any | Any | `WAIT` | **Toxic Order Flow**: VPIN exceeds threshold. Adverse selection risk high. |
+| **R3** | `> 0.35` | Any | Any | Any | `TWAP` | **Mild Toxicity**: Slow execution over time to minimize routing to informed counterparties. |
+| **R4** | Any | `> 10` | Any | Any | `ICEBERG` | **Illiquid Book**: Large spreads mean crossing the book is expensive. Slice orders to rest inside the book. |
+| **R5** | Any | Any | `> 0.03` | Any | `TWAP` | **Abnormal Volatility**: High market standard deviation. Smooth volatility exposure. |
+| **R6** | `< 0.30` | `< 3` | `< 0.01` | **False** | `MARKET` | **Safe Liquid Market**: Low toxicity, tight spread, low volatility. Immediate execution. |
+| **R7** | Default | Default | Default | **False** | `VWAP` | **Standard Liquid Market**: Balanced metrics. Execute inline with historical volume profiles. |
 
 ---
 
 ## 7. Dashboard Wireframe Flow
 
-The layout contains 6 primary widgets configured inside NitroStudio. The live demo prioritizes the **Recommendation Panel** as the landing view.
+The UI consists of 6 presentation panels. The entry point of the live demo lands on the **Recommendation Panel**.
 
 ```mermaid
 graph TD
-    subgraph Dashboard UI Layout [Dashboard UI Layout]
-        Widget1["1. Market Overview<br/>(scan_market Tool)"]
-        Widget2["2. Order Book Heatmap<br/>(orderbook://{ticker} Resource)"]
-        Widget3["3. Order Flow / VPIN<br/>(analyze_order_flow_toxicity Tool)"]
-        Widget4["4. Spoofing Panel<br/>(detect_spoofing Tool)"]
-        Widget5["5. Risk Panel<br/>(risk://{account} Resource)"]
-        Widget6["6. Recommendation Panel<br/>(generate_trading_memo Tool)"]
+    subgraph Dashboard Layout
+        RecPanel[1. Recommendation Panel *Live Demo Landing*]
+        MarketPanel[2. Market Overview Panel]
+        OBHeatmap[3. Order Book Heatmap]
+        VPINPanel[4. Order Flow / VPIN Panel]
+        SpoofPanel[5. Spoofing Panel]
+        RiskPanel[6. Risk Panel]
     end
 
-    DataService["BinanceWSPlusDemoService (Data Producer)"]
-    DataService -->|Feeds real-time updates| Widget1
-    DataService -->|Feeds bids/asks| Widget2
-    DataService -->|Feeds trade prints| Widget3
-    DataService -->|Feeds cancel events| Widget4
-    
-    Widget6 -->|Triggers orchestrator| Widget1 & Widget2 & Widget3 & Widget4 & Widget5
-    Note over Widget6: Live Demo lands here. Auto-updates when synthetic spoof is injected.
+    %% Data bindings
+    ToolMemo[generate_trading_memo] -->|feeds| RecPanel
+    ResMarket[market:// ticker] -->|feeds| MarketPanel
+    ResOB[orderbook:// ticker] -->|feeds| OBHeatmap
+    ToolTox[analyze_order_flow_toxicity] -->|feeds| VPINPanel
+    ToolSpoof[detect_spoofing] -->|feeds| SpoofPanel
+    ResRisk[risk:// account] -->|feeds| RiskPanel
 ```
 
 ---
 
 ## 8. Agent Prompt Templates
 
-Each of the 7 agents is declared using NitroStack `@Prompt` decorators. These are their exact template definitions:
+These prompts will be registered using `@Prompt` decorators on class methods.
 
-### 1. LiquidityAgent Prompt
+### 8.1. RiskAgent Prompt
 ```
-You are the Liquidity Agent for QuantGuard.
-Your task is to analyze order book depth, bid-ask spreads, and order sizes.
-Analyze the following parameters:
-- Bid-Ask Spread: {spread} bps
-- Total Depth (Bids): {bidDepth} units
-- Total Depth (Asks): {askDepth} units
-- Imbalance Score: {orderImbalance} (-1 to 1)
+Name: risk_agent_prompt
+Description: Prompt for analyzing exposure, drawdowns, and Value at Risk (VaR) compliance.
 
-Provide a detailed summary of depth and market thickness in quantitative terminology. Detail slippage risks for a standardized order of {orderSize} units.
-```
+Template:
+You are the institutional Risk Agent of a quantitative trading desk.
+Analyze the following account risk parameters:
+- Total Notional Exposure: ${exposure}
+- Unrealized PnL: ${pnl}
+- Value at Risk (VaR 95%): ${var95}
+- Portfolio Max Drawdown: ${maxDrawdown}
+- Current Account Leverage: ${leverage}
+- Suggested Position size limit: ${suggestedMaxPositionSize}
 
-### 2. ToxicityAgent Prompt
-```
-You are the Toxicity Agent for QuantGuard.
-Your task is to evaluate adverse selection risk using the VPIN metric (Volume-Synchronized Probability of Toxicity).
-Analyze the following parameters:
-- VPIN Score: {vpin} (range 0 to 1)
-- Toxicity Level: {toxicityLevel}
-
-Explain whether informed traders are dominating order flow. Provide clear warnings if high toxicity will result in immediate adverse execution. Use terminology like "informed flow", "uninformed flow", and "adverse selection".
+Determine whether the current risk levels are SAFE, WARNING, or CRITICAL. Provide a concise, action-oriented report outlining any violations of risk limits.
 ```
 
-### 3. SpoofingAgent Prompt
+### 8.2. LiquidityAgent Prompt
 ```
-You are the Spoofing Agent for QuantGuard.
-Your task is to detect manipulative order book activity such as phantom buy/sell walls.
-Analyze the following parameters:
-- Spoofing Detected: {spoofingDetected}
-- Recent Cancel Events: {cancelEvents}
+Name: liquidity_agent_prompt
+Description: Prompt for assessing depth, bid-ask spread, and slippage profiles.
 
-Detail if there is a pattern of large orders appearing and disappearing rapidly within tight price windows. Highlight if these cancellations are correlated with price movements in the opposite direction.
-```
+Template:
+You are the Liquidity Agent for the execution desk.
+Evaluate these current market liquidity metrics:
+- Bid-Ask Spread: ${spread} bps
+- Order Book Imbalance: ${orderImbalance}
+- Liquidity Score (0-100): ${liquidityScore}
+- Expected Slippage (for normal order): ${slippage}%
 
-### 4. VolatilityAgent Prompt
-```
-You are the Volatility Agent for QuantGuard.
-Your task is to analyze price variance, range, and volatility spikes.
-Analyze the following parameters:
-- Realized Volatility: {realizedVolatility}
-- High-Low Candle Range: {hlRange}
-- Volatility Level: {volatilityLevel}
-
-Explain if volatility is expanding or contracting, and how it impacts bid-ask spreads.
+Analyze the order book depth and describe the immediate market impact of trading. Focus on execution slippage and depth exhaustion.
 ```
 
-### 5. RiskAgent Prompt
+### 8.3. ToxicityAgent Prompt
 ```
-You are the Risk Agent for QuantGuard.
-Your task is to evaluate portfolio exposure, drawdown safety limits, and Value-at-Risk.
-Analyze the following parameters:
-- Account: {account}
-- Current Exposure: {currentExposure}
-- VaR (95%): {var95}
-- CVaR (95% Expected Shortfall): {expectedShortfall}
-- Max Drawdown: {maxDrawdown}
-- Leverage: {leverage}
+Name: toxicity_agent_prompt
+Description: Prompt for evaluating order flow toxicity and VPIN.
 
-Advise on the safety of initiating new positions. Recommend maximum size based on current portfolio VaR limits.
-```
+Template:
+You are the Order Flow Toxicity Agent.
+Evaluate the current Volume-Synchronized Probability of Toxicity (VPIN):
+- VPIN: ${vpin}
+- Status: ${toxicityStatus}
 
-### 6. NewsAgent Prompt
-```
-You are the News Agent for QuantGuard.
-Your task is to assess macroeconomic event risk and headline sentiment.
-Analyze the following parameters:
-- News Sentiment Score: {sentimentScore} (-1 to 1)
-- Breaking Headlines: {headlines}
-- Upcoming Calendar Events: {calendar}
-
-Explain how macro news or calendar events may impact market microstructure stability in the next 1-4 hours.
+Analyze whether informed traders (toxic flow) dominate the order flow. Explain if entering market orders is structurally safe, or if market makers are likely to pull liquidity.
 ```
 
-### 7. StrategyAgent Prompt
+### 8.4. SpoofingAgent Prompt
 ```
-You are the Lead Strategy Agent for QuantGuard.
-You compile the final Market Safety Memo.
+Name: spoofing_agent_prompt
+Description: Prompt for identifying market manipulation, spoof walls, and fake liquidity.
 
-You will receive the following parameters:
-- Ticker: {ticker}
-- Deterministic Strategy Decision: {recommendedStrategy} (This was calculated using our auditable rule-engine and CANNOT be changed!)
-- Rule Rationale: {ruleDescription}
-- VPIN Analysis: {toxicityExplanation}
-- Spoofing Analysis: {spoofingExplanation}
-- Liquidity Analysis: {liquidityExplanation}
-- Volatility Analysis: {volatilityExplanation}
-- Portfolio Risk Analysis: {riskExplanation}
-- News Sentiment Analysis: {newsExplanation}
+Template:
+You are the Spoofing and Order Book Manipulation Detection Agent.
+Review the following order book anomalies:
+- Spoofing Detected: ${spoofingDetected}
+- Direction: ${direction}
+- Details: ${spoofingDetails}
 
-Draft an institutional-grade Executive Trading Memo. Your memo must be written in professional trading-desk jargon (e.g., "adverse selection", "order book depletion", "skewness", "illiquidity penalty").
-Structure your memo exactly as follows:
-1. Executive Recommendation (WAIT / TWAP / VWAP / ICEBERG / MARKET) in bold.
-2. Confidence Score (0-100%).
-3. Microstructure Assessment (Liquidity, Toxicity, Spoofing, Volatility).
-4. Portfolio Constraints & Exposure Risk.
-5. Execution Strategy Rationale (explaining why the chosen strategy is optimal given the conditions).
+Provide an analysis of order book manipulation. Explain if large buy or sell walls are resting artificially to force prices up or down, and describe the risk of executing against this artificial price pressure.
+```
 
-Keep the summary clear, professional, and free of vague stock-tipping predictions. Focus strictly on market microstructure and execution safety.
+### 8.5. VolatilityAgent Prompt
+```
+Name: volatility_agent_prompt
+Description: Prompt for evaluating short-term price variance and realized volatility.
+
+Template:
+You are the Volatility Agent.
+Review current price volatility metrics:
+- Realized Volatility: ${volatility}
+- Historical daily standard deviation: ${dailyStdDev}
+
+Assess whether volatility is abnormal. Explain the implications of this volatility on slippage variance and execution timing.
+```
+
+### 8.6. NewsAgent Prompt
+```
+Name: news_agent_prompt
+Description: Prompt for summarizing economic events and sentiment scores.
+
+Template:
+You are the Macro News Sentiment Agent.
+Summarize the sentiment and potential impact of the following news headlines and calendar events:
+- sentimentScore: ${sentimentScore} (scale -1 to +1)
+- Sentiment Breakdown: ${sentimentBreakdown}
+- Economic Calendar: ${economicCalendar}
+- Breaking News Headlines: ${breakingNews}
+
+Evaluate whether news flow presents an imminent tail-risk or event-risk.
+```
+
+### 8.7. StrategyAgent Prompt
+```
+Name: strategy_agent_prompt
+Description: Prompt for synthesizing all agent reports and generating execution strategy memos.
+
+Template:
+You are the Chief Strategy Agent of the trading desk.
+Your desk requires an execution recommendation based on the combined reports of the specialist agents:
+- Volatility: ${volatilityReport}
+- Liquidity: ${liquidityReport}
+- Toxicity: ${toxicityReport}
+- Spoofing: ${spoofingReport}
+- Risk: ${riskReport}
+- News Sentiment: ${newsReport}
+
+The deterministic execution engine has selected:
+RECOMMENDED STRATEGY: ${recommendedStrategy} (Confidence: ${confidence})
+
+Write a brief, plain-English executive summary (the "Trading Memo") explaining to the portfolio manager why this strategy is recommended. Do not override the decision. Justify it using the metrics provided.
 ```
