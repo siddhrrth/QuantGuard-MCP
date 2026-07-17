@@ -1,0 +1,28 @@
+You are building "QuantGuard MCP" — a Multi-Agent Market Microstructure & Risk
+Intelligence Platform — as a NitroStack MCP server.
+
+Scaffold a new NitroStack project called `quantguard-mcp` using the NitroStack
+CLI conventions (NestJS-inspired modular structure, decorator-driven Tools/
+Resources/Prompts, Zod schemas for input/output validation, DI container).
+
+Set up:
+1. Project structure with separate modules: `market`, `orderbook`, `risk`,
+   `news`, `agents`, `strategy`, `db`.
+2. SQLite as the database (via a `DbModule` provider, injectable service
+   `DbService`), with tables: orders, trades, orderbook_snapshots, risk,
+   signals, strategies, news, logs. Write the schema as a migration/init
+   script that runs on server boot.
+3. Environment config for API keys: MARKET_DATA_API_KEY (Polygon.io /
+   AlphaVantage / Yahoo Finance — pick one and make the provider swappable
+   behind an interface), NEWS_API_KEY (NewsAPI or Finnhub), and an optional
+   crypto WebSocket source (Binance) for live demo data, since crypto
+   WebSockets are free and easiest for a live demo.
+4. A root README explaining how to run `nitrostack dev`, open the project in
+   NitroStudio, and what the server does.
+5. Do NOT implement any Tools or Resources yet — just the skeleton, DI
+   wiring, DB schema, and a placeholder health-check Tool that returns
+   { status: "ok" } so I can confirm the server boots in NitroStudio.
+
+Ask me before choosing between Polygon.io/AlphaVantage/Yahoo Finance if you
+need clarification on rate limits vs. cost; otherwise pick a sensible
+default and note the tradeoff in the README.
