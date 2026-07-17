@@ -1,4 +1,4 @@
-import { ToolDecorator as Tool, z, ExecutionContext, Injectable } from '@nitrostack/core';
+import { ToolDecorator as Tool, Widget, z, ExecutionContext, Injectable } from '@nitrostack/core';
 import { OrchestratorService } from './orchestrator.service.js';
 
 const TradingMemoInput = z.object({
@@ -30,6 +30,7 @@ export class AgentsTools {
     inputSchema: TradingMemoInput,
     outputSchema: TradingMemoOutput
   })
+  @Widget('quantguard-dashboard')
   async generateTradingMemo(
     { ticker, account }: { ticker: string; account: string },
     ctx: ExecutionContext
