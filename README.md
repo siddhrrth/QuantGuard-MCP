@@ -4,6 +4,11 @@ QuantGuard MCP is a Model Context Protocol (MCP) server built on the **NitroStac
 
 It is designed for institutional trading desks to continuously monitor market microstructure and assess trading safety across multiple specialist agents, generating deterministic risk decisions explained in natural language.
 
+> ### 📐 [Low-Level Design Document (LLD) →](./LLD.md)
+> Complete architecture diagrams, database ERD, agent orchestration flow, tool/resource API contracts, prompt templates, and UI widget specifications.
+
+---
+
 ---
 
 ## 🚀 Key Features
