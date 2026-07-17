@@ -1,6 +1,7 @@
 import { Module } from '@nitrostack/core';
 import { RiskService } from './risk.service.js';
 import { RiskResource } from './risk.resource.js';
+import { RiskTools } from './risk.tools.js';
 import { DbModule } from '../db/db.module.js';
 
 /**
@@ -11,7 +12,7 @@ import { DbModule } from '../db/db.module.js';
   description: 'Portfolio risk, value at risk, drawdowns, and limits monitoring',
   imports: [DbModule],
   providers: [RiskService],
-  controllers: [RiskResource],
-  exports: [RiskService, RiskResource]
+  controllers: [RiskResource, RiskTools],
+  exports: [RiskService, RiskResource, RiskTools]
 })
 export class RiskModule {}
