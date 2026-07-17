@@ -3,6 +3,7 @@ import { OrderbookService } from './orderbook.service.js';
 import { OrderBookResource } from './orderbook.resource.js';
 import { DbModule } from '../db/db.module.js';
 import { MarketModule } from '../market/market.module.js';
+import { MarketTools } from '../market/market.tools.js';
 
 /**
  * OrderbookModule — orderbook management and analysis
@@ -12,7 +13,7 @@ import { MarketModule } from '../market/market.module.js';
   description: 'Orderbook management, snapshots, and microstructure analysis',
   imports: [DbModule, MarketModule],
   providers: [OrderbookService],
-  controllers: [OrderBookResource],
-  exports: [OrderbookService, OrderBookResource]
+  controllers: [OrderBookResource, MarketTools],
+  exports: [OrderbookService, OrderBookResource, MarketTools]
 })
 export class OrderbookModule {}
