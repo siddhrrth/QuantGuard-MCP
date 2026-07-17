@@ -33,8 +33,8 @@ console.log(`- 180s onwards: Spoofing wall cancelled (recovers to VWAP)`);
 console.log(`Press Ctrl+C to terminate simulation at any time.\n`);
 
 // Start the server in a subprocess with DEMO_MODE=true
-const serverPath = path.join(__dirname, 'node_modules', '@nitrostack', 'cli', 'bin', 'nitrostack.js');
-const serverProcess = spawn('node', [serverPath, 'start'], {
+const serverPath = path.join(__dirname, 'dist', 'index.js');
+const serverProcess = spawn('node', [serverPath], {
   env: {
     ...process.env,
     DEMO_MODE: 'true',
@@ -120,8 +120,7 @@ async function run() {
       });
 
       if (response.result && response.result.content) {
-        // Parse the structured text result
-        const memo = response.result;
+        const memo = JSON.parse(response.result.content[0].text);
         
         // Print the dashboard in terminal
         renderCliDashboard(memo, elapsed);

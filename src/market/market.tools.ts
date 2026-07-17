@@ -86,10 +86,16 @@ export class MarketTools {
     try {
       const price = await this.marketService.getPrice(ticker);
       const volatility = await this.marketService.getRealizedVolatility(ticker, '1d');
-      const spread = await this.marketService.getSpread(ticker);
-      
       const orderbook = await this.orderbookService.getOrderbook(ticker);
       const liquidityScore = orderbook.liquidityScore;
+      
+      let spread = 0;
+      if (orderbook.bidLevels.length > 0 && orderbook.askLevels.length > 0) {
+        const bid = orderbook.bidLevels[0].price;
+        const ask = orderbook.askLevels[0].price;
+        const mid = (bid + ask) / 2;
+        spread = mid > 0 ? ((ask - bid) / mid) * 10000 : 0;
+      }
 
       return {
         price,
