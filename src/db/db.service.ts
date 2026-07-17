@@ -1,5 +1,5 @@
 import { Injectable, ConfigService } from '@nitrostack/core';
-import Database from 'better-sqlite3';
+import Database from './sqlite-mock.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -11,7 +11,7 @@ const __dirname = path.dirname(__filename);
  */
 @Injectable({ deps: [ConfigService] })
 export class DbService {
-  private db: Database.Database;
+  private db: any;
 
   constructor(private configService: ConfigService) {
     const dbPath = path.join(__dirname, '../../quantguard.db');
@@ -155,7 +155,7 @@ export class DbService {
   /**
    * Get database instance
    */
-  getDb(): Database.Database {
+  getDb(): any {
     return this.db;
   }
 
