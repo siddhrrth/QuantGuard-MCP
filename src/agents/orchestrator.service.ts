@@ -105,6 +105,7 @@ Write a brief, plain-English executive summary (the "Trading Memo") explaining t
       risk: {
         var95: riskAnalysis.var95,
         expectedShortfall: riskAnalysis.expectedShortfall,
+        portfolioDrawdown: riskAnalysis.portfolioDrawdown,
         riskApproved: riskAnalysis.riskApproved,
         comments: riskAnalysis.comments
       },

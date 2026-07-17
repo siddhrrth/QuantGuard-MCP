@@ -456,15 +456,15 @@ export default function QuantGuardDashboard() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #1f2937', paddingBottom: '8px' }}>
                   <span style={{ opacity: 0.6 }}>Value-at-Risk (VaR 95%)</span>
-                  <span style={{ fontWeight: 'bold', color: '#f87171' }}>${data.risk.var95.toLocaleString()}</span>
+                  <span style={{ fontWeight: 'bold', color: '#f87171' }}>${(data.risk.var95 ?? 0).toLocaleString()}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #1f2937', paddingBottom: '8px' }}>
                   <span style={{ opacity: 0.6 }}>Expected Shortfall (CVaR)</span>
-                  <span style={{ fontWeight: 'bold', color: '#ef4444' }}>${data.risk.expectedShortfall.toLocaleString()}</span>
+                  <span style={{ fontWeight: 'bold', color: '#ef4444' }}>${(data.risk.expectedShortfall ?? 0).toLocaleString()}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #1f2937', paddingBottom: '8px' }}>
                   <span style={{ opacity: 0.6 }}>Max Historical Drawdown</span>
-                  <span style={{ fontWeight: 'bold' }}>{(data.risk.portfolioDrawdown).toFixed(2)}%</span>
+                  <span style={{ fontWeight: 'bold' }}>{(data.risk.portfolioDrawdown ?? 0).toFixed(2)}%</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ opacity: 0.6 }}>Proposed Risk Pre-Approval</span>
