@@ -1,5 +1,4 @@
 import { McpApp, Module, ConfigModule } from '@nitrostack/core';
-import { CalculatorModule } from './modules/calculator/calculator.module.js';
 import { SystemHealthCheck } from './health/system.health.js';
 import { DbModule } from './db/db.module.js';
 import { MarketModule } from './market/market.module.js';
@@ -38,8 +37,7 @@ import { HealthModule } from './health/health.module.js';
     NewsModule,
     AgentsModule,
     StrategyModule,
-    HealthModule,
-    CalculatorModule
+    HealthModule
   ],
   providers: [
     // Health Checks
