@@ -9,6 +9,10 @@
  * - Production (NODE_ENV=production): Dual transport (STDIO + HTTP SSE)
  */
 
+// Redirect console.log and console.info to stderr to avoid polluting MCP StdIO transport
+console.log = (...args) => console.error(...args);
+console.info = (...args) => console.error(...args);
+
 import 'dotenv/config';
 import { McpApplicationFactory } from '@nitrostack/core';
 import { AppModule } from './app.module.js';
