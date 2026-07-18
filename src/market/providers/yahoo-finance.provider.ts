@@ -15,7 +15,8 @@ export class YahooFinanceProvider implements MarketDataProvider {
   async getPrice(symbol: string): Promise<number> {
     try {
       const response = await fetch(
-        `${this.baseUrl}/quoteSummary/${symbol}?modules=price`
+        `${this.baseUrl}/quoteSummary/${symbol}?modules=price`,
+        { signal: AbortSignal.timeout(3000) }
       );
       const data = (await response.json()) as any;
       return data.quoteSummary.result[0].price.regularMarketPrice.raw;
@@ -29,7 +30,8 @@ export class YahooFinanceProvider implements MarketDataProvider {
   async getOHLCV(symbol: string, interval: string = '1d'): Promise<OHLCV[]> {
     try {
       const response = await fetch(
-        `${this.baseUrl}/chart/${symbol}?interval=${interval}&range=1mo`
+        `${this.baseUrl}/chart/${symbol}?interval=${interval}&range=1mo`,
+        { signal: AbortSignal.timeout(3000) }
       );
       const data = (await response.json()) as any;
       const quotes = data.chart.result[0].timestamp;

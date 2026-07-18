@@ -18,7 +18,8 @@ export class LlmService {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 contents: [{ parts: [{ text: prompt }] }]
-              })
+              }),
+              signal: AbortSignal.timeout(5000)
             }
           );
           
@@ -42,7 +43,8 @@ export class LlmService {
                 model: 'gpt-4o-mini',
                 messages: [{ role: 'user', content: prompt }],
                 temperature: 0.7
-              })
+              }),
+              signal: AbortSignal.timeout(5000)
             }
           );
 
