@@ -78,7 +78,7 @@ node demo.js
     "mcpServers": {
       "quantguard": {
         "command": "node",
-        "args": ["C:/Users/Siddharth/.gemini/antigravity/scratch/quantguard-mcp/dist/index.js"],
+        "args": "YOUR PATH"
         "env": {
           "DEMO_MODE": "true"
         }
